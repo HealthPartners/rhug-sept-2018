@@ -18,3 +18,62 @@ class: center
 ## Building a functional build/deploy system at HealthPartners
 
 ---
+
+# Philosophies
+
+1. High availability for production
+2. Secure credentials for all environments
+3. Good default behavior
+4. Continuous delivery – on demand from the business perspective
+5. Everything comes from source control
+6. Keep things ephemeral, record externally
+
+---
+
+# Cluster Design
+
+* Build tools run on bld1 cluster
+* Applications have three environments (dev, uat, prod)
+.center[![Clusters](/images/cluster-design.png)]
+
+---
+
+# Tools
+
+* Jenkins
+* Bitbucket and Gitlab (long story)
+* Nexus and Artifactory (long story)
+* Jira & HipChat
+* Hashicorp Vault
+* Fortify
+* Sonarqube
+* ServiceNow
+
+---
+
+# OpenShift Concepts
+
+* `BuildConfig` object integrates with Jenkins using `openshift-sync` plugin
+* Jenkins uses `openshift-login` plugin to delegate access
+* Jenkins pod running in each OpenShift namespace
+* Each team owns one or more namespaces
+
+---
+
+# Let's Dive In
+
+```groovy
+library identifier: 'hp-pipeline-library@master', retriever: modernSCM(
+    [$class: 'GitSCMSource',
+    remote: 'ssh://git@git.healthpartners.com/paas/hp-pipeline-library.git',
+    credentialsId: "${env.NAMESPACE}-bitbucketsecret"]
+)
+
+hpPipeline([
+  appName: "my-service",
+  deployPom: "my-service/pom.xml",
+  team: "Cloud"
+])
+```
+
+.center[![BlueOcean](/images/jenkinsBO.png)]
