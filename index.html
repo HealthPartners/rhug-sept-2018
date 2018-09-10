@@ -77,3 +77,200 @@ hpPipeline([
 ```
 
 .center[![BlueOcean](/images/jenkinsBO.png)]
+
+---
+
+# Developer Viewpoint
+
+* Create your git repository with Jenkinsfile and pipeline.yaml at the root
+* `oc login https://openshift-bld1.com && oc project MYPROJECT`
+* `oc create -f pipeline.yaml`
+* Jenkins pod in the namespace runs the build
+
+---
+
+# The Pipeline
+
+1. Prepare
+2. Build
+3. Test
+4. Pre-deploy
+5. Deploy
+6. Verify
+7. Repeat 4-6
+
+
+---
+
+# The Code
+
+hpPipeline.groovy
+```groovy
+def call(pipelineConfig) {
+	new PipelineWrapper(this).wrapPipeline(pipelineConfig) { config ->
+        def target = [namespace: env.NAMESPACE,
+          environment: OpenshiftEnvironments.getBuildEnvironment()]
+		DefaultEvaluator.evaluateDefault(config,
+            'buildStage')?.call(config, target, this)
+		def envArray = DefaultEvaluator.evaluateDefault(config,
+            'deploymentEnvironments').call(config)
+		for (String environment : envArray) {
+            target << [environment: environment]
+			beginEnvironment(environment, config)
+			deployToEnvironment(environment, config)
+			postDeployStages(environment, config)
+		}
+	}
+}
+```
+
+---
+
+# Preparation
+
+* Set some base variables
+
+```groovy
+def wrapPipeline(pipelineConfig, closure) {
+    pipelineConfig.audit = [:]
+    pipelineConfig.defaults = new DefaultEvaluator().initialize()
+    if (!pipelineConfig.openshift) {
+       pipelineConfig.openshift = [:]
+    }
+    if (!pipelineConfig.skipNotify) {
+        pipelineConfig.skipNotify = false
+    }
+    pipelineConfig.pipelineJobId = UUID.randomUUID().toString()
+    ...
+```
+
+---
+
+# Preparation
+
+* Tell people what is happening
+
+```groovy
+context.notifyHipChatRoom([
+  team: pipelineConfig.team,
+  message: "Jenkins build started: ${detail}",
+  skipNotify: pipelineConfig.skipNotify
+])
+context.audit([
+        message: "Jenkins build started",
+        build: context.env.BUILD_DISPLAY_NAME,
+        job: context.env.JOB_NAME
+], pipelineConfig)
+```
+
+---
+
+# Preparation
+
+* Enforce specific properties
+
+```groovy
+if (!pipelineConfig.appName) {
+    error "You must define an appName property"
+}
+if(!pipelineConfig.team) {
+    error "You must define a team property"
+}
+```
+
+---
+
+# Preparation
+
+* Set global environment variables for the job
+
+```groovy
+env.DOCKER_HOST = 'docker.healthpartners.com:80'
+env.FORTIFY_CLD_CTRL_HOST = 'http://URL.healthpartners.com/cloud-ctrl'
+env.FORTIFY_SSC_HOST = 'https://anotherURL.healthpartners.com/ssc'
+env.FORTIFY_TOKEN = 'my-fav-token'
+env.MAVEN_IMAGE_HASH = 'sha256:abc123'
+env.FORTIFY_IMAGE_HASH = 'sha256:def456'
+env.NODE_IMAGE_HASH = 'sha256:ghi789'
+env.JIRA_HOST = 'jira.healthpartners.com'
+env.SONARQUBE_URL = "http://sonarqube.${env.NAMESPACE}.svc:9000".toString()
+env.AUDIT_URL = 'https://auditing-service.healthpartners.com/'
+```
+
+---
+
+# Tangent: Defaults and Overrides
+
+* Goal: Be able to override anything
+* Sensible defaults in a place you can find them
+* Created a groovy specific structure Evaluator/Configurer
+* Single place where defaults are stored and evaluated
+* Each default contributor is specific to a category
+  * e.g. `MavenDefaultContributors`
+---
+
+# Tangent: Defaults and Overrides
+
+* Groovy truthiness makes life easy here
+
+```groovy
+def evaluateDefault(config, String key) {
+    def overrides = config?.overrides?.get(key)
+    //single argument function
+    def metaClassArgs = overrides?.metaClass?.respondsTo(overrides,
+        'call', [Object.class].toArray())
+    if (overrides && metaClassArgs && !metaClassArgs.isEmpty()) {
+        return overrides.call(config)
+    } else if (overrides){
+        //its not a closure, so it must be a value: return it
+        return overrides
+    } else {
+        //attempt the default closure, then the default value
+        return defaultClosures?.get(key)?.call(config) ?:
+                defaultValues[key]
+    }
+}
+```
+
+---
+
+# Tangent: Defaults and Overrides
+
+```groovy
+class MavenDefaultContributors implements DefaultContributor {
+    @Override
+    LinkedHashMap getClosures() {
+        return [
+                packaging: {it.packaging},
+                compilePom: {it.pomPath ?: it.appDir ? it.appDir + "/pom.xml" : null},
+                packageFlags: {it.packageFlags ?: ''},
+                deployFlags: {it.deployFlags ?: ''},
+                integrationTestFlags: {it.integrationTestFlags ?: ''},
+				webTestFlags: {it.webTest?.mavenFlags ?: '' }
+        ]
+    }
+
+    @Override
+    LinkedHashMap getValues() {
+        return [
+                packaging: 'jar'
+        ]
+    }
+}
+```
+
+---
+
+# Tangent: Defaults and Overrides
+
+* This structure allows developers to override anything that is keyed by a contributor
+
+```groovy
+
+hpPipeline([
+  ...
+  overrides: [
+    packageFlags: "-PmyFavoriteProfile -Dprop=value"
+  ]
+])
+```
