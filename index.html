@@ -60,6 +60,17 @@ class: center
 
 ---
 
+# Jenkins Concepts
+
+* Shared libraries create functions that can be called from Jenkinsfile
+* Groovy scripts stored in `vars/` directory
+  * Must declare `public def call()` method
+* Groovy classes stored in `src/` directory
+* Resources stored in `resources/` directory
+  * Loaded with `libraryResource` function
+* More info at https://jenkins.io/doc/book/pipeline/shared-libraries/
+---
+
 # Let's Dive In
 
 ```groovy
@@ -185,9 +196,9 @@ if(!pipelineConfig.team) {
 * Set global environment variables for the job
 
 ```groovy
-env.DOCKER_HOST = 'docker.healthpartners.com:80'
-env.FORTIFY_CLD_CTRL_HOST = 'http://URL.healthpartners.com/cloud-ctrl'
-env.FORTIFY_SSC_HOST = 'https://anotherURL.healthpartners.com/ssc'
+env.DOCKER_HOST = 'docker.healthpartners.com'
+env.FORTIFY_CLD_CTRL_HOST = 'https://fortify.healthpartners.com/cloud-ctrl'
+env.FORTIFY_SSC_HOST = 'https://fortify.healthpartners.com/ssc'
 env.FORTIFY_TOKEN = 'my-fav-token'
 env.MAVEN_IMAGE_HASH = 'sha256:abc123'
 env.FORTIFY_IMAGE_HASH = 'sha256:def456'
@@ -274,3 +285,215 @@ hpPipeline([
   ]
 ])
 ```
+
+---
+
+# Build Stage
+
+* Goal: Get a validated docker image to deploy
+* Steps:
+  * Package artifact
+  * Run unit/component tests
+  * Run s2i build from base image
+  * Publish image to external registry
+
+---
+
+# Testing
+
+* Unit & Component tests run before pre-deployment begins
+* Generally JUnit tests, building @SpringBootTest component tests to load parts of the application
+* H2 Database testing
+
+---
+
+# Pre-Deployment
+
+* Approve the environment
+* Check that the cluster is up
+* Change management (will go into detail later)
+
+
+```groovy
+def call(envKey, config) {
+
+    def envConfig = OpenshiftEnvironments.getEnv(envKey)
+
+    getEnvironmentApproval(envConfig, config)
+
+    checkEnvironmentAvailability(envConfig)
+
+    jiraValidator(config, envConfig)
+
+    changeStart(config, envConfig)
+}
+```
+
+---
+
+# Deployment
+
+* Use the API to update the deploymentconfig and associated objects
+* Right now, we are using Jenkins to generate YAML file manifest
+
+```groovy
+def objects = [
+    'BuildConfig' : new BuildConfig().create(config, target),
+    'ImageStream' : new ImageStream().create(config, target),
+    'DeploymentConfig' : new DeploymentConfig().create(config, target),
+    'Service' : new Service().create(config, target),
+]
+```
+
+---
+
+# Verification
+
+* Post deployment separated into "Phases" and run in parallel
+* SonarQube scan phase
+* Fortify scan phase
+* Separate scan from validating results
+* Integration tests live with the source code
+* Zephyr tests from JIRA
+* Selenium tests through a Selenium grid
+* Change management verification
+
+---
+
+# Verification
+
+```groovy
+if(!config.buildOnly) {
+    addPhase(postDeployMap, new IntegrationTestPhase(this),
+      environment, config, null)
+}
+if (config.zephyr) {
+    if (config.zephyr.environments.contains(environment)) {
+        addPhase(postDeployMap, new ZephyrTestPhase(this),
+          environment, config, null)
+    }
+}
+if (project.buildType == 'maven') {
+    if (environment.contains('dev')) {
+        addPhase(postDeployMap,
+          new StaticCodeScanPhase(this), environment, config,
+          [new SonarQubeReporting(this), new FortifyReporting(this)])
+    }
+    else if(environment.contains('uat'))
+    {
+        addPhase(postDeployMap,
+          new StaticCodeValidationPhase(this),
+          environment, config, null)
+    }
+}
+```
+
+---
+
+# Change Management
+
+* ServiceNow TableAPI
+  * Much of the actions in the ServiceNow UI are available via API
+* Standard change request process
+  * Change request templates that can be instantiated to changes
+  * Simplifies approval process for low priority changes
+* Opt in:
+  ```groovy
+  hpPipeline([
+    ...
+    cmdb_item: "HealthPartners.com Services",
+    autoCreateChange: true,
+    ...
+  ])
+  ```
+
+---
+
+# Change Management
+
+* Created a Jenkins plugin to carry out standard actions
+* https://github.com/jenkinsci/service-now-plugin
+  * Manage tables
+  * Attach files
+  * Update state
+* Provides a simple entrypoint for making the necessary API calls
+
+---
+
+# Change Management
+
+* Remember the philosophy: Keep things ephemeral, record externally
+* ServiceNow is our main audit store
+  * Test results
+  * JIRA ticket number
+  * Git commit info
+  * Scan results
+  * Deployment time
+  * Deployment results
+
+
+---
+
+# Change Management: Results
+
+* Can go from commit to production in 18 minutes
+* Have completed over 10 deploys in a single day
+* Multiple other companies using our plugin
+* Validated our change management approach with our audit/compliance groups
+
+---
+
+# Visualizing the Data
+
+* Created our own audit datastore and send data to Splunk
+* Splunk: Short term event view
+* Data store: Long term auditing view of things that happen in the pipeline
+  * Approvals
+  * Jobs
+  * Deployments
+  * Validations
+
+---
+
+# Visualizing the Data
+
+.center[![Deployments](/images/deploymentLog.png)]
+
+---
+
+# Multi-Faceted Approach
+
+* This is one of many of these libraries we have written:
+  * Liquibase pipelines
+  * ConfigMap and Secret management
+  * Namespace management
+  * Orchestrate Ansible Tower jobs for OpenShift infrastructure
+  * Even manage our weblogic servers through these pipelines(!)
+
+---
+
+# Building for the future
+
+* Istio for canary deployments and advanced deployment strategy
+* More complete testing strategies
+* Read data from metrics stores to know about deployment success
+* Tracking historical data
+
+---
+
+# OpenSource
+
+* Working to open-source hp-pipeline-library
+* Open sourced our testing library
+* Our team manages two Jenkins plugins (service-now and prometheus)
+* Open sourced a library that translates Prometheus alerts to ServiceNow (Snogo)
+* Looking for more ways to contribute to the community
+
+---
+
+# References
+
+1. https://github.com/jenkinsci/service-now-plugin
+2. https://github.com/HealthPartners/jenkins-shared-library-test-helper
+3. https://github.com/HealthPartners/snogo
+4. https://jenkins.io/doc/book/pipeline/shared-libraries/
