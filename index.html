@@ -238,15 +238,15 @@ env.AUDIT_URL = 'https://auditing-service.healthpartners.com/'
 
 # Defaults and Overrides
 
-* Goal: Be able to override anything
+* Be able to override anything
 * Sensible defaults in a place you can find them
-* Created a groovy specific structure Evaluator/Configurer
-* Single place where defaults are stored and evaluated
-* Each default contributor is specific to a category
-  * e.g. `MavenDefaultContributors`
+* Created a structure `Evaluator`/`Configurer`
+  * Single place where defaults are stored and evaluated
+  * Each default contributor is specific to a category
+    * e.g. `MavenDefaultContributors`
 ---
 
-# Defaults and Overrides
+# Defaults and Overrides: Evaluator
 
 * Use groovy truthiness to look for default values
 
@@ -271,7 +271,7 @@ def evaluateDefault(config, String key) {
 
 ---
 
-# Defaults and Overrides
+# Defaults and Overrides: Contributor
 
 ```groovy
 class MavenDefaultContributors implements DefaultContributor {
