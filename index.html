@@ -124,6 +124,9 @@ hpPipeline([
 
 ---
 
+.center[![ApplicationView](/rhug-sept-2018/images/deploymentExample.png)]
+---
+
 # The Pipeline
 
 1. Prepare
@@ -449,6 +452,19 @@ if (project.buildType == 'maven') {
 
 # Change Management
 
+* ServiceNow is our company-wide audit store
+  * Test results
+  * JIRA ticket number
+  * Git commit info
+  * Scan results
+  * Deployment time
+  * Deployment results
+
+
+---
+
+# Change Management
+
 * ServiceNow TableAPI
   * Much of the actions in the ServiceNow UI are available via API
 * Standard change request process
@@ -474,19 +490,6 @@ if (project.buildType == 'maven') {
   * Attach files
   * Update state
 * Provides a simple entrypoint for making the necessary API calls
-
----
-
-# Change Management
-
-* Remember the philosophy: Keep things ephemeral, record externally
-* ServiceNow is our company-wide audit store
-  * Test results
-  * JIRA ticket number
-  * Git commit info
-  * Scan results
-  * Deployment time
-  * Deployment results
 
 
 ---
