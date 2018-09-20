@@ -6,7 +6,9 @@ title: Continuous Delivery on OpenShift
 layout: true
 name: top-bar
 .left[![HealthPartners](/rhug-sept-2018/images/hplogo.gif)]
-
+.twitter-handle[
+  `@jmcshane`
+]
 ---
 
 class: center
@@ -414,10 +416,8 @@ if(!config.buildOnly) {
       environment, config, null)
 }
 if (config.zephyr) {
-    if (config.zephyr.environments.contains(environment)) {
-        addPhase(postDeployMap, new ZephyrTestPhase(this),
-          environment, config, null)
-    }
+    addPhase(postDeployMap, new ZephyrTestPhase(this),
+      environment, config, null)
 }
 if (project.buildType == 'maven') {
     if (environment.contains('dev')) {
