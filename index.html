@@ -399,6 +399,13 @@ vaultToken([environment: envKey, namespace: tokenNamespace]) {
   sh "${ocCmd} ${commandConfig.command}"
 }
 ```
+
+```groovy
+ocCommand(config.environment, [
+        "namespace"   : "${config.namespace}",
+        "command"     : "deploy ${deploymentConfig} --latest"
+])
+```
 ---
 
 # Verification
@@ -406,6 +413,7 @@ vaultToken([environment: envKey, namespace: tokenNamespace]) {
 * Post deployment separated into "Phases" and run in parallel
 * SonarQube scan phase
 * Fortify scan phase
+  * Separate scanning from retriving results for better user experience
 * Integration tests in source code repository
 * Zephyr tests from JIRA for manual test phases
 
