@@ -94,6 +94,17 @@ class: center
 
 # Developer Viewpoint
 
+* Create your git repository with Jenkinsfile and pipeline.yaml at the root
+* `oc login https://openshift-bld1.com && oc project MYPROJECT`
+* `oc create -f pipeline.yaml`
+* Jenkins pod in the namespace runs the build
+
+.center[![BlueOcean](/rhug-sept-2018/images/jenkinsBO.png)]
+
+---
+
+# Developer Viewpoint
+
 ```groovy
 library identifier: 'hp-pipeline-library@master', retriever: modernSCM(
     [$class: 'GitSCMSource',
@@ -107,17 +118,6 @@ hpPipeline([
   team: "Cloud"
 ])
 ```
-
----
-
-# Developer Viewpoint
-
-* Create your git repository with Jenkinsfile and pipeline.yaml at the root
-* `oc login https://openshift-bld1.com && oc project MYPROJECT`
-* `oc create -f pipeline.yaml`
-* Jenkins pod in the namespace runs the build
-
-.center[![BlueOcean](/rhug-sept-2018/images/jenkinsBO.png)]
 
 ---
 
