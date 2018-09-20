@@ -21,12 +21,12 @@ class: center
 
 # Philosophies
 
-1. High availability for production
-2. Secure credentials for all environments
+1. High availability
+2. Secure credentials
 3. Good default behavior
-4. Continuous delivery – on demand from the business perspective
-5. Everything comes from source control
-6. Keep things ephemeral, record externally
+4. CI/CD Principles
+5. Source control
+6. Ephemeral build systems
 
 ---
 
@@ -69,9 +69,31 @@ class: center
 * Resources stored in `resources/` directory
   * Loaded with `libraryResource` function
 * More info at https://jenkins.io/doc/book/pipeline/shared-libraries/
+
 ---
 
-# Let's Dive In
+# Developer Viewpoint
+
+* Single entrypoint to administrative actions
+* Building more capable administration:
+  * New namespaces
+  * Jenkins machine management
+  * Pod diagnostic actions
+  * Creating new credentials
+  * Cleanup jobs
+  * Temporary access
+
+---
+
+# Developer Viewpoint
+
+.left-column[![NamespaceManagement](/rhug-sept-2018/images/namespaceManagement.png)]
+.right-column[![ToolManagement](/rhug-sept-2018/images/toolManagement.png)]
+
+
+---
+
+# Developer Viewpoint
 
 ```groovy
 library identifier: 'hp-pipeline-library@master', retriever: modernSCM(
@@ -87,8 +109,6 @@ hpPipeline([
 ])
 ```
 
-.center[![BlueOcean](/rhug-sept-2018/images/jenkinsBO.png)]
-
 ---
 
 # Developer Viewpoint
@@ -97,6 +117,8 @@ hpPipeline([
 * `oc login https://openshift-bld1.com && oc project MYPROJECT`
 * `oc create -f pipeline.yaml`
 * Jenkins pod in the namespace runs the build
+
+.center[![BlueOcean](/rhug-sept-2018/images/jenkinsBO.png)]
 
 ---
 
@@ -210,7 +232,7 @@ env.AUDIT_URL = 'https://auditing-service.healthpartners.com/'
 
 ---
 
-# Tangent: Defaults and Overrides
+# Defaults and Overrides
 
 * Goal: Be able to override anything
 * Sensible defaults in a place you can find them
@@ -220,9 +242,9 @@ env.AUDIT_URL = 'https://auditing-service.healthpartners.com/'
   * e.g. `MavenDefaultContributors`
 ---
 
-# Tangent: Defaults and Overrides
+# Defaults and Overrides
 
-* Groovy truthiness makes life easy here
+* Use groovy truthiness to look for default values
 
 ```groovy
 def evaluateDefault(config, String key) {
@@ -245,7 +267,7 @@ def evaluateDefault(config, String key) {
 
 ---
 
-# Tangent: Defaults and Overrides
+# Defaults and Overrides
 
 ```groovy
 class MavenDefaultContributors implements DefaultContributor {
@@ -272,7 +294,7 @@ class MavenDefaultContributors implements DefaultContributor {
 
 ---
 
-# Tangent: Defaults and Overrides
+# Defaults and Overrides
 
 * This structure allows developers to override anything that is keyed by a contributor
 
@@ -302,7 +324,7 @@ hpPipeline([
 # Testing
 
 * Unit & Component tests run before pre-deployment begins
-* Generally JUnit tests, building @SpringBootTest component tests to load parts of the application
+* Generally JUnit tests, building `@SpringBootTest` component tests to load parts of the application
 * H2 Database testing
 
 ---
@@ -333,8 +355,10 @@ def call(envKey, config) {
 
 # Deployment
 
-* Use the API to update the deploymentconfig and associated objects
-* Right now, we are using Jenkins to generate YAML file manifest
+* Use the OpenShift API to `apply` objects to the environment
+* Two strategies
+  * Built in "happy path" - use Jenkins to generate objects
+  * More flexible templated path - developers provide OpenShift `Template` object
 
 ```groovy
 def objects = [
@@ -345,6 +369,31 @@ def objects = [
 ]
 ```
 
+```groovy
+configurationApply(target) {
+    sh "oc process ${parameters} -f ../${filePath} > ./template-output.yaml"
+}
+```
+
+---
+
+# Deployment
+
+* Store OpenShift serviceaccount tokens in Vault
+* Load those tokens in a common interface to make API actions
+
+```groovy
+vaultToken([environment: envKey, namespace: tokenNamespace]) {
+  def ocCmd = """oc --server=${envConfig.serverUrl} \
+    --insecure-skip-tls-verify=true --token ${TOKEN}"""
+
+  if(commandConfig.namespace) {
+    ocCmd += " --namespace=${commandConfig.namespace}"
+  }
+  ocCmd += "  --config=/dev/null"
+  sh "${ocCmd} ${commandConfig.command}"
+}
+```
 ---
 
 # Verification
@@ -352,11 +401,8 @@ def objects = [
 * Post deployment separated into "Phases" and run in parallel
 * SonarQube scan phase
 * Fortify scan phase
-* Separate scan from validating results
-* Integration tests live with the source code
-* Zephyr tests from JIRA
-* Selenium tests through a Selenium grid
-* Change management verification
+* Integration tests in source code repository
+* Zephyr tests from JIRA for manual test phases
 
 ---
 
@@ -390,6 +436,17 @@ if (project.buildType == 'maven') {
 
 ---
 
+# Verification
+
+* Integration tests use the OpenShift proxy API to target new pods
+* Record test results for change management
+* Three automated test types:
+  * API tests
+  * Browser tests (Selenium)
+  * Shell scripting validation
+
+---
+
 # Change Management
 
 * ServiceNow TableAPI
@@ -400,10 +457,10 @@ if (project.buildType == 'maven') {
 * Opt in:
   ```groovy
   hpPipeline([
-    ...
-    cmdb_item: "HealthPartners.com Services",
-    autoCreateChange: true,
-    ...
+      change : [
+         cmdb_item: "HealthPartners.com Services",
+         autoCreate: true
+      ]
   ])
   ```
 
@@ -423,7 +480,7 @@ if (project.buildType == 'maven') {
 # Change Management
 
 * Remember the philosophy: Keep things ephemeral, record externally
-* ServiceNow is our main audit store
+* ServiceNow is our company-wide audit store
   * Test results
   * JIRA ticket number
   * Git commit info
@@ -438,6 +495,7 @@ if (project.buildType == 'maven') {
 
 * Can go from commit to production in 18 minutes
 * Have completed over 10 deploys in a single day
+* More than 100 audited production actions per week
 * Multiple other companies using our plugin
 * Validated our change management approach with our audit/compliance groups
 
@@ -474,10 +532,11 @@ if (project.buildType == 'maven') {
 
 # Building for the future
 
-* Istio for canary deployments and advanced deployment strategy
+* Canary deployments and advanced deployment strategy
 * More complete testing strategies
 * Read data from metrics stores to know about deployment success
 * Tracking historical data
+* Overlay application data with deployment events
 
 ---
 
@@ -490,6 +549,141 @@ if (project.buildType == 'maven') {
 * Looking for more ways to contribute to the community
 
 ---
+
+# Testing our Code
+
+* The pipeline library code is used by multiple teams in our organization
+* Breaking people's builds is a very poor customer experience
+* Important to provide safe structures for updating this code
+* Again, taking a layered approach here
+
+---
+
+# Testing our Code
+
+* Unit tests using the shared library test helper
+* Integration tests creating small "snippets" of Jenkinsfile
+* End to end tests creating real pipelines
+
+---
+
+# Testing our Code
+
+```groovy
+def call(config) {
+    node('master') {
+        vaultToken([vaultSecrets: HipChatRooms.getHipchatRoomInfo(config.team)]) {
+            if (HIPCHAT_ROOM_ID) {
+                def notify = config.warn ?: false
+                def color = notify ? (config.failed ? 'RED' : 'GREEN') : 'GRAY'
+                hipchatSend message: config.message.toString(),
+                  color: color, notify: notify, room: HIPCHAT_ROOM_ID,
+                  server: "hipchat.healthpartners.com",
+                  token: HIPCHAT_ROOM_TOKEN, v2enabled: true
+            }
+        }
+    }
+}
+
+return this
+```
+
+---
+
+# Testing our Code
+
+```groovy
+class NotifyHipChatRoomTest extends BasePipelineTest {
+    def 'When call to notifyHipChatRoom, send a message with correct configuration' ()  {
+        given:
+        def binding = initializeMocks('hipchatSend')
+        def notifyHipChatRoom = getShell(binding, 'vars/notifyHipChatRoom.groovy')
+        def config = [
+                warn: true,
+                message: 'mock message',
+                target: 'eng1'
+        ]
+        when:
+        notifyHipChatRoom(config)
+        then:
+        1*binding.hipchatSend.call(*_) >> { arguments ->
+            assert arguments[0][0].message == 'mock message - eng1'
+            assert arguments[0][0].notify == true
+            assert arguments[0][0].color == 'GREEN'
+        }
+    }
+}
+```
+---
+
+# Testing our Code
+
+```groovy
+node('master') {
+    checkout scm
+    parallel(
+      'validate post deploy stages' : {
+        load "integration/maven-build-jar/Jenkinsfile.postdeploystages"
+      }, 'validate integrationTest step' : {
+        load "integration/maven-test-step/Jenkinsfile.integrationtest"
+      },'validate ocDeploy step' :  {
+        load "integration/sb-app/Jenkinsfile.ocdeploy"
+      }, 'validate mavenBuild step' : {
+        load "integration/maven-build-jar/Jenkinsfile.mavenbuild"
+        load "integration/maven-build-war/Jenkinsfile.mavenbuildwar"
+      }
+    )
+}
+```
+
+---
+
+# Testing our Code
+
+```groovy
+mavenNode([appName:'sb-app-integrationtest']) {
+    def verify = { ->
+        def testFile = readFile('target/surefire-reports/TestThatTargetIsCorrect.txt')
+        if (testFile.contains("FAILURE!")) {
+            sh "exit 1"
+        }
+    }
+    checkout scm
+    def config = [
+            appName: 'jenkins',
+            defaults: new com.healthpartners.pipeline.defaults.DefaultEvaluator(),
+            overrides: [
+              integrationTestDirectory: 'integration/maven-test-step'
+            ]
+    ]
+    config.defaults.initialize()
+    integrationTest(config,
+        [environment: 'bld1', namespace: 'artifact-builder'],
+        verify)
+}
+```
+---
+
+# Testing our Code
+
+* This creates a pipeline to test our pipeline
+* Continuous updates for our source code
+* Developers reference `master`
+* Integration and E2E test against `develop`
+* Unit test on `feature/` branches
+
+---
+
+# Takeaways
+
+* Jenkins & OpenShift can be a powerful pairing
+* Optimizing for delivery has sped adoption
+* Supporting testing is critical
+* Audit & compliance are our friends
+* Open source is great!
+
+---
+
 
 # References
 
